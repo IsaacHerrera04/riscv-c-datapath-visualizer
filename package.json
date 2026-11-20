@@ -1,0 +1,11 @@
+{
+  "name": "riscv-c-datapath-visualizer",
+  "version": "0.1.0",
+  "description": "Compiles a subset of C to RISC-V RV32I, assembles it to machine code and visualizes the single-cycle datapath.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
