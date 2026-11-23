@@ -1,0 +1,84 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  INSTRUCTIONS,
+  ALU_OPERATIONS,
+  findByName,
+  findByEncoding,
+} from "../src/shared/instructions.js";
+
+// ---------- instructions.js ----------
+
+test("there are exactly 33 instructions with unique names", () => {
+  assert.equal(INSTRUCTIONS.length, 33);
+  const names = new Set(INSTRUCTIONS.map((ins) => ins.name));
+  assert.equal(names.size, 33);
+});
+
+test("instruction count per type is R 10, I 9, L 5, S 3, B 6", () => {
+  const counts = {};
+  for (const ins of INSTRUCTIONS) counts[ins.type] = (counts[ins.type] ?? 0) + 1;
+  assert.deepEqual(counts, { R: 10, I: 9, L: 5, S: 3, B: 6 });
+});
+
+test("no two instructions share the same encoding", () => {
+  for (let i = 0; i < INSTRUCTIONS.length; i++) {
+    for (let j = i + 1; j < INSTRUCTIONS.length; j++) {
+      const a = INSTRUCTIONS[i];
+      const b = INSTRUCTIONS[j];
+      if (a.opcode !== b.opcode || a.funct3 !== b.funct3) continue;
+      // Same opcode and funct3: only funct7 can tell them apart,
+      // so both must define it and it must be different.
+      assert.notEqual(a.funct7, null, `${a.name} collides with ${b.name}`);
+      assert.notEqual(b.funct7, null, `${b.name} collides with ${a.name}`);
+      assert.notEqual(a.funct7, b.funct7, `${a.name} collides with ${b.name}`);
+    }
+  }
+});
+
+test("every aluControl is a known ALU operation", () => {
+  for (const ins of INSTRUCTIONS) {
+    assert.ok(ins.aluControl in ALU_OPERATIONS, `${ins.name}: ${ins.aluControl}`);
+  }
+});
+
+test("branchInvert is 1 only for bne, bge and bgeu", () => {
+  const inverted = INSTRUCTIONS.filter((ins) => ins.branchInvert === 1).map((ins) => ins.name);
+  assert.deepEqual(inverted, ["bne", "bge", "bgeu"]);
+});
+
+test("rows and the table are frozen", () => {
+  assert.ok(Object.isFrozen(INSTRUCTIONS));
+  assert.ok(INSTRUCTIONS.every((ins) => Object.isFrozen(ins)));
+  assert.ok(Object.isFrozen(ALU_OPERATIONS));
+});
+
+test("findByName is case-insensitive and returns undefined for unknown names", () => {
+  assert.equal(findByName("addi").opcode, 0b0010011);
+  assert.equal(findByName("ADDI"), findByName("addi"));
+  assert.equal(findByName("jal"), undefined);
+  assert.equal(findByName(42), undefined);
+});
+
+test("findByEncoding ignores funct7 when it is don't care (addi x1, x0, -1)", () => {
+  assert.equal(findByEncoding(0b0010011, 0b000, 0b1111111).name, "addi");
+});
+
+test("findByEncoding uses funct7 when it matters", () => {
+  assert.equal(findByEncoding(0b0010011, 0b101, 0b0100000).name, "srai");
+  assert.equal(findByEncoding(0b0010011, 0b101, 0b0000000).name, "srli");
+  assert.equal(findByEncoding(0b0110011, 0b000, 0b0000000).name, "add");
+  assert.equal(findByEncoding(0b0110011, 0b000, 0b0100000).name, "sub");
+});
+
+test("findByEncoding returns undefined for encodings outside the 33", () => {
+  assert.equal(findByEncoding(0b1101111, 0b000, 0b0000000), undefined); // jal
+  assert.equal(findByEncoding(0b0110011, 0b000, 0b0000001), undefined); // mul (M extension)
+  assert.equal(findByEncoding(0b1100011, 0b010, 0b0000000), undefined); // unused branch funct3
+});
+
+test("ALU_OPERATIONS names the codes used by branches", () => {
+  assert.equal(ALU_OPERATIONS[findByName("beq").aluControl], "SEQ");
+  assert.equal(ALU_OPERATIONS[findByName("bltu").aluControl], "SLTU");
+});
