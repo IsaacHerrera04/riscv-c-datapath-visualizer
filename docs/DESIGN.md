@@ -133,7 +133,6 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
   low address bits, so misaligned accesses would read wrong data.
 - **Array access with a variable index:** compute `index << log2(size)` into a register, then use the
   array base as the immediate offset: `lw rd, base(rIndex)`.
-- **Registers x28 and x29 are never used** (hardware forces them to constants, see section 7.5).
 - **Loops** jump back with `beq x0, x0, label` (always taken) so no `jal` is needed.
 - **Every program ends with `beq x0, x0, 0`** (jump to itself = halt), same convention as the
   original hardware test program.
@@ -266,7 +265,6 @@ correspondence with the hardware project is always visible.
 | Instruction memory: 256 words | `MEMORIA_PROGRAMA.vhd` | Max 256 instructions per program |
 | Data memory: 256 words = 1024 bytes, uses `addr(9 downto 2)` | `MEMORIAA_S.vhd` | Max 1024 bytes of variables |
 | Misaligned accesses ignore low address bits | `MEMORIAA_S.vhd` | Compiler always aligns |
-| x28 = `0xDEADBEEF`, x29 = `0xCAFEBABE` forced every clock | `BancoDeRegistros.vhd` | Compiler never uses x28/x29 |
 | x0 always reads 0, writes ignored | `BancoDeRegistros.vhd` | Standard RISC-V behavior |
 | `CONST` input = 4 | `MUX_PC.vhd` comment | `PC_INCREMENT = 4` |
 | Halt convention: `beq x0, x0, 0` | test program | Compiler ends every program with it |
