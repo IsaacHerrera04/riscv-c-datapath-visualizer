@@ -7,6 +7,7 @@ import {
   findByName,
   findByEncoding,
 } from "../src/shared/instructions.js";
+import { REGISTER_COUNT, ABI_NAMES, parseRegister } from "../src/shared/registers.js";
 
 // ---------- instructions.js ----------
 
@@ -81,4 +82,48 @@ test("findByEncoding returns undefined for encodings outside the 33", () => {
 test("ALU_OPERATIONS names the codes used by branches", () => {
   assert.equal(ALU_OPERATIONS[findByName("beq").aluControl], "SEQ");
   assert.equal(ALU_OPERATIONS[findByName("bltu").aluControl], "SLTU");
+});
+
+// ---------- registers.js ----------
+
+test("there are 32 registers, each with one unique ABI name", () => {
+  assert.equal(REGISTER_COUNT, 32);
+  assert.equal(ABI_NAMES.length, REGISTER_COUNT);
+  assert.equal(new Set(ABI_NAMES).size, REGISTER_COUNT);
+  assert.ok(Object.isFrozen(ABI_NAMES));
+});
+
+test("parseRegister accepts numeric names x0..x31", () => {
+  assert.equal(parseRegister("x0"), 0);
+  assert.equal(parseRegister("x5"), 5);
+  assert.equal(parseRegister("x31"), 31);
+});
+
+test("parseRegister accepts ABI names and the fp alias", () => {
+  assert.equal(parseRegister("zero"), 0);
+  assert.equal(parseRegister("t0"), 5);
+  assert.equal(parseRegister("s0"), 8);
+  assert.equal(parseRegister("fp"), 8);
+  assert.equal(parseRegister("s11"), 27);
+  assert.equal(parseRegister("t6"), 31);
+});
+
+test("every ABI name maps back to its own register number", () => {
+  ABI_NAMES.forEach((name, number) => {
+    assert.equal(parseRegister(name), number, name);
+  });
+});
+
+test("parseRegister ignores case and surrounding whitespace", () => {
+  assert.equal(parseRegister("X5"), 5);
+  assert.equal(parseRegister("T0"), 5);
+  assert.equal(parseRegister("  a0 "), 10);
+});
+
+test("parseRegister returns null for invalid names", () => {
+  for (const text of ["x32", "x99", "x05", "x", "x-1", "foo", "", "t 0"]) {
+    assert.equal(parseRegister(text), null, `"${text}"`);
+  }
+  assert.equal(parseRegister(5), null);
+  assert.equal(parseRegister(undefined), null);
 });
