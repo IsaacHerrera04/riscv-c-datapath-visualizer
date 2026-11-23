@@ -8,6 +8,7 @@ import {
   findByEncoding,
 } from "../src/shared/instructions.js";
 import { REGISTER_COUNT, ABI_NAMES, parseRegister } from "../src/shared/registers.js";
+import { HARDWARE } from "../src/shared/hardware.js";
 
 // ---------- instructions.js ----------
 
@@ -126,4 +127,37 @@ test("parseRegister returns null for invalid names", () => {
   }
   assert.equal(parseRegister(5), null);
   assert.equal(parseRegister(undefined), null);
+});
+
+// ---------- hardware.js ----------
+
+test("memory sizes match the VHDL design", () => {
+  assert.equal(HARDWARE.INSTRUCTION_MEMORY_WORDS, 256);
+  assert.equal(HARDWARE.DATA_MEMORY_BYTES, 1024);
+  assert.equal(HARDWARE.DATA_MEMORY_BYTES % 4, 0); // whole 32-bit words
+});
+
+test("immediate limits match their bit widths", () => {
+  // n-bit signed range: -2^(n-1) .. 2^(n-1) - 1
+  assert.equal(HARDWARE.IMM12_MIN, -(2 ** 11));
+  assert.equal(HARDWARE.IMM12_MAX, 2 ** 11 - 1);
+  assert.equal(HARDWARE.SHAMT_MAX, 2 ** 5 - 1);
+  // 13-bit signed and even (bit 0 is not stored)
+  assert.equal(HARDWARE.BRANCH_OFFSET_MIN, -(2 ** 12));
+  assert.equal(HARDWARE.BRANCH_OFFSET_MAX, 2 ** 12 - 2);
+  assert.equal(HARDWARE.BRANCH_OFFSET_MAX % 2, 0);
+});
+
+test("every data address fits in the 12-bit immediate (base register x0)", () => {
+  assert.ok(HARDWARE.DATA_MEMORY_BYTES - 1 <= HARDWARE.IMM12_MAX);
+});
+
+test("PC increment and halt label", () => {
+  assert.equal(HARDWARE.PC_INCREMENT, 4);
+  assert.equal(HARDWARE.HALT_LABEL, "halt");
+});
+
+test("HARDWARE is frozen", () => {
+  assert.ok(Object.isFrozen(HARDWARE));
+  assert.throws(() => { HARDWARE.DATA_MEMORY_BYTES = 2048; }, TypeError);
 });
