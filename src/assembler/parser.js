@@ -3,7 +3,7 @@
 // Functions return data or { error }, never throw. Errors have no line number:
 // the caller (index.js) knows which line is being parsed and adds it.
 
-import { findByName } from "../shared/instructions.js";
+import { findByName, isShiftImmediate } from "../shared/instructions.js";
 import { parseRegister } from "../shared/registers.js";
 import { HARDWARE } from "../shared/hardware.js";
 
@@ -135,12 +135,6 @@ const OPERAND_PARSERS = Object.freeze({
     return collect({ rs1: readRegister(rs1), rs2: readRegister(rs2), ...readBranchTarget(target) });
   },
 });
-
-// In type I, only the shifts (slli/srli/srai) define funct7: their bits 31..25
-// are fixed, so the immediate is just the 5-bit shift amount.
-function isShiftImmediate(instruction) {
-  return instruction.type === "I" && instruction.funct7 !== null;
-}
 
 // ---------- Readers: { value } or { error } ----------
 

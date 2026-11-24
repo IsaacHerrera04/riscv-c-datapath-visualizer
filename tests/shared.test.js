@@ -6,6 +6,7 @@ import {
   ALU_OPERATIONS,
   findByName,
   findByEncoding,
+  isShiftImmediate,
 } from "../src/shared/instructions.js";
 import { REGISTER_COUNT, ABI_NAMES, parseRegister } from "../src/shared/registers.js";
 import { HARDWARE } from "../src/shared/hardware.js";
@@ -78,6 +79,11 @@ test("findByEncoding returns undefined for encodings outside the 33", () => {
   assert.equal(findByEncoding(0b1101111, 0b000, 0b0000000), undefined); // jal
   assert.equal(findByEncoding(0b0110011, 0b000, 0b0000001), undefined); // mul (M extension)
   assert.equal(findByEncoding(0b1100011, 0b010, 0b0000000), undefined); // unused branch funct3
+});
+
+test("isShiftImmediate is true only for slli, srli and srai", () => {
+  const shifts = INSTRUCTIONS.filter(isShiftImmediate).map((ins) => ins.name);
+  assert.deepEqual(shifts, ["slli", "srli", "srai"]);
 });
 
 test("ALU_OPERATIONS names the codes used by branches", () => {

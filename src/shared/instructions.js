@@ -112,6 +112,12 @@ export function findByName(name) {
   return BY_NAME.get(name.toLowerCase());
 }
 
+// True for slli/srli/srai. In type I, only the shifts define funct7: their
+// bits 31..25 are fixed, so the immediate is just the 5-bit shift amount.
+export function isShiftImmediate(instruction) {
+  return instruction.type === "I" && instruction.funct7 !== null;
+}
+
 // Returns the row whose encoding matches, or undefined.
 // funct7 is compared only when the row defines it (not null): for addi,
 // bits 31..25 are part of the immediate and can hold any value.
