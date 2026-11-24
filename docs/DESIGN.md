@@ -286,6 +286,7 @@ src/
   datapath/                (d) control.js, activity.js, svg.js, index.js
   ui/                      (e) main.js orchestrator, styles.css, examples.js
 tests/                     node --test, one file per module (+ end-to-end and coverage)
+scripts/assemble.js        command-line tool: node scripts/assemble.js <file.s> (demo programs in scripts/demo/)
 docs/DESIGN.md             this file
 docs/img/                  schematic screenshot of the Active-HDL design
 ```
