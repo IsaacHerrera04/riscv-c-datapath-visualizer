@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { HARDWARE_PROGRAM } from "./fixtures/vectors.js";
 
 // Runs "node scripts/assemble.js <args>" exactly as a user would in the terminal.
 function run(...args) {
@@ -11,12 +12,7 @@ function run(...args) {
 // The Hex column of the printed table, in order (comments may contain other hex numbers).
 const words = (out) => [...out.matchAll(/^0x[0-9A-F]{3} {4}(0x[0-9A-F]{8})/gm)].map((m) => m[1]);
 
-const HARDWARE_WORDS = [
-  "0x00800993", "0x00300A13", "0x013A1663", "0x013A0AB3", "0x00000063", "0x41498AB3",
-  "0x013A4463", "0x06300B13", "0x013A5463", "0x00100B13", "0xFFF00B93", "0x0179E463",
-  "0x06300C13", "0x013BC463", "0x06300C13", "0x013BF463", "0x06300C13", "0x00300C93",
-  "0xFFFC8C93", "0xFE0C9EE3", "0x00000063",
-];
+const HARDWARE_WORDS = HARDWARE_PROGRAM.map(([, hex]) => hex);
 
 test("demo: hardware test program prints the VHDL hex words", () => {
   const { code, out } = run("scripts/demo/hardware-test.s");
