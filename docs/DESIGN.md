@@ -59,9 +59,13 @@ assemble(asmText)  // → { program: [{ address, source, line, word }], errors: 
                    //    word is an unsigned 32-bit number, e.g. 0x00502023
 
 // (c) Decoder
-decode(word)       // → { name, type, opcode, rd, rs1, rs2, funct3, funct7, imm }
+decode(word)       // → { name, type, opcode, rd, rs1, rs2, funct3, funct7, imm, segments }
+                   //    rd/rs1/rs2 are null when the format does not use them
                    //    imm is the sign-extended immediate as a JS number (or null for type R)
+                   //    funct7 is bits 31–25 as present in the word
+                   //    segments: [{ field, bits, value }], the 32 bits split by field
                    //    returns { error } if the word is not one of the 33 instructions
+disassemble(fields) // → canonical text, e.g. "sw x5, 0(x0)" (xN names, numeric offsets)
 
 // (d) Datapath
 datapath(fields)   // → { signals: { regWrite, memWrite, aluSrc, memToReg, immSrc,
@@ -282,7 +286,7 @@ src/
   shared/hardware.js       hardware limits (section 7.5)
   compiler/                (a) lexer.js, parser.js, semantic.js, codegen.js, index.js
   assembler/               (b)
-  decoder/                 (c)
+  decoder/                 (c) fields.js, segments.js, disassemble.js, index.js
   datapath/                (d) control.js, activity.js, svg.js, index.js
   ui/                      (e) main.js orchestrator, styles.css, examples.js
 tests/                     node --test, one file per module (+ end-to-end and coverage)
