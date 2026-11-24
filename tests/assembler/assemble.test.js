@@ -61,38 +61,38 @@ test("label names like constructor or __proto__ work as normal labels", () => {
 
 // ---------- Branch offsets (pass 2) ----------
 
+// The word of a single instruction assembled alone (at address 0).
+const wordOf = (line) => assemble(line).program[0].word;
+
 test("forward branch: offset = label address − branch address", () => {
   const { program, errors } = assemble(source(
     "beq x0, x0, end", // address 0
     "addi x5, x0, 1",  // address 4
     "end:",
-    "addi x6, x0, 2",  // address 8
+    "addi x6, x0, 2",  // address 8 → offset 8 − 0 = 8
   ));
   assert.deepEqual(errors, []);
-  assert.equal(program[0].fields.imm, 8);
+  assert.equal(program[0].word, wordOf("beq x0, x0, 8"));
 });
 
 test("backward branch gives a negative offset (hardware loop, addresses 68–76)", () => {
-  // Same loop as the hardware test program, which writes the offset as -4.
   const { program, errors } = assemble(source(
     "addi x25, x0, 3",      // address 0
     "loop:",
     "addi x25, x25, -1",    // address 4
-    "bne x25, x0, loop",    // address 8 → 4 − 8 = −4
+    "bne x25, x0, loop",    // address 8 → offset 4 − 8 = −4
   ));
   assert.deepEqual(errors, []);
-  assert.equal(program[2].fields.imm, -4);
+  assert.equal(program[2].word, 0xFE0C9EE3); // hardware vector: bne x25, x0, -4
 });
 
 test("halt: a branch to itself has offset 0", () => {
-  const { program } = assemble("halt: beq x0, x0, halt");
-  assert.equal(program[0].fields.imm, 0);
+  assert.equal(wordOf("halt: beq x0, x0, halt"), 0x00000063);
 });
 
-test("numeric branch offsets are kept as written", () => {
-  const { program, errors } = assemble(source("addi x5, x0, 1", "bne x5, x0, -4"));
-  assert.deepEqual(errors, []);
-  assert.equal(program[1].fields.imm, -4);
+test("program entries have exactly address, line, source and word", () => {
+  const [entry] = assemble("sw x5, 0(x0)").program;
+  assert.deepEqual(entry, { address: 0, line: 1, source: "sw x5, 0(x0)", word: 0x00502023 });
 });
 
 // ---------- Errors (with line numbers) ----------

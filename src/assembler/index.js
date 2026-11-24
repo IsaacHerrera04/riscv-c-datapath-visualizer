@@ -1,12 +1,13 @@
-// (b) Assembler: RISC-V assembly text → program with addresses (and, from
-// task 2.3, the 32-bit machine word of every instruction).
+// (b) Assembler: RISC-V assembly text → program with the address and the
+// 32-bit machine word of every instruction.
 //
 // Two passes over the text:
 //   1. Give every instruction its address and record where each label is.
-//   2. Check the operands of every instruction and resolve branch labels
-//      into offsets (possible now, because all label addresses are known).
+//   2. Check the operands of every instruction, resolve branch labels into
+//      offsets (possible now, because all label addresses are known) and encode.
 
 import { parseLine, parseOperands } from "./parser.js";
+import { encode } from "./encoder.js";
 import { HARDWARE } from "../shared/hardware.js";
 
 // Every instruction takes one 32-bit word = 4 bytes, the same 4 the PC adds.
@@ -80,7 +81,7 @@ function firstPass(lines) {
 
 // ---------- Pass 2: operands and branch offsets ----------
 
-// → { program: [{ address, line, source, fields, word }], errors }
+// → { program: [{ address, line, source, word }], errors }
 function secondPass(statements, labels) {
   const program = [];
   const errors = [];
@@ -101,8 +102,7 @@ function secondPass(statements, labels) {
       fields = { ...fields, imm: offset.value };
     }
 
-    // word: filled by the encoder in task 2.3.
-    program.push({ address, line, source, fields, word: null });
+    program.push({ address, line, source, word: encode(fields) });
   }
 
   return { program, errors };
