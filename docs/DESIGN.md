@@ -112,7 +112,8 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 | Arithmetic / bitwise | `+ - & \| ^ << >>`, unary `-` |
 | Comparisons | `< > <= >= == !=` in `if` / `while` / `for` conditions **and** as values (`int x = a < b;`) |
 | Control flow | `if`, `if/else`, `while`, `for` (desugared to `while`) |
-| Constants | decimal integers in `[-2048, 2047]` |
+| Constants | decimal (`42`) or hexadecimal (`0x2A`) integers in `[-2048, 2047]` |
+| Comments | `// ...` and `/* ... */` |
 
 ### Rejected (with a clear error message)
 
@@ -123,6 +124,7 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 | functions other than `main`, calls | need a stack, `jal`/`jalr` (types J/I-jump not in our hardware set) |
 | pointers, structs, floats | out of scope |
 | constants outside `[-2048, 2047]` | would need `lui` (type U) |
+| octal constants (`017`) | in C a leading zero means octal (`017` = 15); rejected to avoid surprises |
 
 ### Type rules (follow real C semantics)
 
