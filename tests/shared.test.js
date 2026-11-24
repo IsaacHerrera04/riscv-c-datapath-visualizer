@@ -10,6 +10,7 @@ import {
 } from "../src/shared/instructions.js";
 import { REGISTER_COUNT, ABI_NAMES, parseRegister, registerName } from "../src/shared/registers.js";
 import { HARDWARE } from "../src/shared/hardware.js";
+import { TARGETS, DEFAULT_TARGET, findTarget } from "../src/shared/targets.js";
 
 // ---------- instructions.js ----------
 
@@ -174,4 +175,27 @@ test("registerName gives the canonical xN name and round-trips with parseRegiste
   for (let number = 0; number < REGISTER_COUNT; number++) {
     assert.equal(parseRegister(registerName(number)), number);
   }
+});
+
+// ---------- targets.js ----------
+
+test("there are three targets with unique ids: riscv, mips, arm", () => {
+  assert.deepEqual(TARGETS.map((target) => target.id), ["riscv", "mips", "arm"]);
+  for (const target of TARGETS) assert.equal(typeof target.label, "string");
+});
+
+test("the default target is RISC-V and exists in the list", () => {
+  assert.equal(DEFAULT_TARGET, "riscv");
+  assert.equal(findTarget(DEFAULT_TARGET).label, "RISC-V (RV32I)");
+});
+
+test("findTarget returns undefined for unknown targets", () => {
+  assert.equal(findTarget("x86"), undefined);
+  assert.equal(findTarget(""), undefined);
+  assert.equal(findTarget(undefined), undefined);
+});
+
+test("TARGETS and its rows are frozen", () => {
+  assert.ok(Object.isFrozen(TARGETS));
+  for (const target of TARGETS) assert.ok(Object.isFrozen(target));
 });
