@@ -8,13 +8,17 @@ It is the single source of truth: if code and this document disagree, one of the
 A web page (static, hosted on GitHub Pages) that:
 
 1. Receives C source code (a small subset of C, see section 4).
-2. Compiles it to RISC-V RV32I assembly with **our own compiler**.
-3. Assembles each instruction to its 32-bit machine code.
-4. Decodes each machine word into its fields (opcode, rd, rs1, rs2, funct3, funct7, immediate).
-5. Shows the **single-cycle datapath** of each instruction (types R, I, L, S, B), highlighting the
-   active components, wires and control-signal values.
+2. Lets the user choose the **target assembly language**: RISC-V RV32I, MIPS32 or ARM (32-bit).
+3. Compiles the C code to the chosen assembly language with **our own compiler**.
+4. For RISC-V only: assembles each instruction to its 32-bit machine code.
+5. For RISC-V only: decodes each machine word into its fields (opcode, rd, rs1, rs2, funct3, funct7,
+   immediate).
+6. For RISC-V only: shows the **single-cycle datapath** of each instruction (types R, I, L, S, B),
+   highlighting the active components, wires and control-signal values.
 
 The datapath reproduces a real hardware design built in Active-HDL (VHDL), described in section 7.
+RISC-V is the main target: the assembler, decoder and datapath exist only for it. MIPS32 and ARM are
+additional compiler outputs (section 4.1).
 
 ## 2. Architecture
 
@@ -36,12 +40,26 @@ The datapath reproduces a real hardware design built in Active-HDL (VHDL), descr
 1. **Every module is a pure function.** It receives data and returns data. It does not know other
    modules exist (it may only import the shared files in `src/shared/`).
 2. **Only the UI orchestrator (`src/ui/main.js`) calls modules, in order**, passing the output of one
-   as the input of the next. "ASM mode" simply skips the compiler call.
+   as the input of the next. "ASM mode" simply skips the compiler call (ASM mode is RISC-V only).
+   With the MIPS32 or ARM target the pipeline stops after the compiler: the page shows the
+   generated assembly and explains that the datapath exists only for RISC-V.
 3. **Errors are returned, not thrown.** Every module returns `{ ..., errors: [] }` where each error is
    `{ line, message }`. This lets the UI show all errors at once.
 4. **Single source of truth.** Opcodes, funct fields and control values live only in
    `src/shared/instructions.js`. Hardware limits live only in `src/shared/hardware.js`.
+   The list of target languages lives only in `src/shared/targets.js`.
    No magic numbers anywhere else.
+
+### Compiler structure: one frontend, one backend per target
+
+```
+            frontend (target-independent)              backend (one per target)
+ C text ──► tokenize ──► parse ──► analyze ──AST──►  riscv.js | mips.js | arm.js  ──► asm text
+```
+
+Checking that the C program is valid does not depend on the target, so the lexer, parser and
+semantic analysis are written once. Only code generation changes per target. Real compilers
+(GCC, LLVM) are organized the same way.
 
 ### Why the datapath reads the decoder output and not the assembler output
 
@@ -52,7 +70,9 @@ from the same 32-bit pattern. Bonus: if the assembler encodes something wrong, t
 
 ```js
 // (a) Compiler
-compile(sourceC)   // → { asm: string, errors: [{ line, message }] }
+compile(sourceC, target)   // target: "riscv" (default) | "mips" | "arm"
+                           // → { asm: string, symbols: [...], errors: [{ line, message }] }
+                           //    an unknown target is reported as { line: null, message }
 
 // (b) Assembler
 assemble(asmText)  // → { program: [{ address, source, line, word }], errors: [...] }
@@ -98,7 +118,7 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 
 | Feature | Reason |
 |---|---|
-| `*` `/` `%` | RV32I has no multiply/divide (that is the M extension) |
+| `*` `/` `%` | RV32I has no multiply/divide (that is the M extension); the subset is the same for every target |
 | `&&` `\|\|` `!` | need short-circuit evaluation; out of scope |
 | functions other than `main`, calls | need a stack, `jal`/`jalr` (types J/I-jump not in our hardware set) |
 | pointers, structs, floats | out of scope |
@@ -127,7 +147,24 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 
 `a > b` is emitted as `blt b, a` and `a <= b` as `bge b, a` (RISC-V has no `bgt`/`ble`).
 
-## 5. Code generation conventions
+### 4.1 Target languages
+
+| Target | Variant | Compiler output | Assembler, decoder, datapath |
+|---|---|---|---|
+| RISC-V | RV32I, the 33 instructions of section 6 | assembly text | yes |
+| MIPS | MIPS32 | assembly text | no |
+| ARM | ARM 32-bit (A32) | assembly text | no |
+
+- **The C subset is the same for every target.** It is defined by the RISC-V hardware: MIPS32 and ARM
+  do have multiply instructions, but `*` `/` `%` stay rejected so the three outputs compile the same
+  programs.
+- MIPS32 and ARM use only the instructions equivalent to the RISC-V set (add/subtract, logic,
+  shifts, set-less-than, byte/halfword/word loads and stores, conditional branches). Their exact
+  instruction lists are defined when those backends are built.
+- The same limits apply to every target (1024 bytes of data, 256 instructions, constants in
+  `[-2048, 2047]`), so a program that compiles for one target compiles for all three.
+
+## 5. Code generation conventions (RISC-V target)
 
 - **All variables and arrays live in data memory** at fixed addresses starting at 0, accessed with
   `x0` as base (`lw x5, 8(x0)`). Every address fits in the 12-bit immediate because data memory is
@@ -284,7 +321,9 @@ src/
   shared/instructions.js   the 33-row instruction table
   shared/registers.js      register names (x0–x31 and ABI names)
   shared/hardware.js       hardware limits (section 7.5)
-  compiler/                (a) lexer.js, parser.js, semantic.js, codegen.js, index.js
+  shared/targets.js        target languages: riscv, mips, arm
+  compiler/                (a) lexer.js, parser.js, semantic.js, index.js
+  compiler/backends/       (a) riscv.js, mips.js, arm.js (code generation per target)
   assembler/               (b)
   decoder/                 (c) fields.js, segments.js, disassemble.js, index.js
   datapath/                (d) control.js, activity.js, svg.js, index.js
@@ -308,5 +347,5 @@ tests with the built-in `node --test` runner.
 | Dec 3–4 | (a) Compiler phase 2 (all types, 33-instruction coverage) |
 | Dec 5–6 | (d) Datapath visualization |
 | Dec 7 | (e) Web interface, GitHub Pages |
-| Dec 8–9 | README, final tests |
+| Dec 8–9 | (a) MIPS32 and ARM backends, target selector; README, final tests |
 | Dec 10 | Delivery |
