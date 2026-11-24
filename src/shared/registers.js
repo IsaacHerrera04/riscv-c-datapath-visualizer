@@ -21,6 +21,11 @@ for (const [name, number] of Object.entries(ALIASES)) BY_ABI_NAME.set(name, numb
 // "x" followed by a number without leading zeros: x0, x7, x31, x99 (range checked below).
 const NUMERIC_NAME = /^x(0|[1-9][0-9]?)$/;
 
+// Canonical (numeric) name of a register: 5 → "x5". The project always writes xN.
+export function registerName(number) {
+  return `x${number}`;
+}
+
 // Returns the register number (0..31) for "x5", "t0", "fp", ... or null if invalid.
 // Case-insensitive; surrounding whitespace is ignored.
 export function parseRegister(text) {

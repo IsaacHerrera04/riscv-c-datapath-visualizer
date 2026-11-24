@@ -8,7 +8,7 @@ import {
   findByEncoding,
   isShiftImmediate,
 } from "../src/shared/instructions.js";
-import { REGISTER_COUNT, ABI_NAMES, parseRegister } from "../src/shared/registers.js";
+import { REGISTER_COUNT, ABI_NAMES, parseRegister, registerName } from "../src/shared/registers.js";
 import { HARDWARE } from "../src/shared/hardware.js";
 
 // ---------- instructions.js ----------
@@ -166,4 +166,12 @@ test("PC increment and halt label", () => {
 test("HARDWARE is frozen", () => {
   assert.ok(Object.isFrozen(HARDWARE));
   assert.throws(() => { HARDWARE.DATA_MEMORY_BYTES = 2048; }, TypeError);
+});
+
+test("registerName gives the canonical xN name and round-trips with parseRegister", () => {
+  assert.equal(registerName(0), "x0");
+  assert.equal(registerName(31), "x31");
+  for (let number = 0; number < REGISTER_COUNT; number++) {
+    assert.equal(parseRegister(registerName(number)), number);
+  }
 });
