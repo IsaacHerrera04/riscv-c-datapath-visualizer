@@ -7,8 +7,8 @@
 // assembly text. Each word is understood through our own decoder, like the hardware's control
 // unit, so the simulator also exercises the decoder.
 //
-// Memory is little-endian (standard RISC-V). In phase 1 every access is a whole word, so the byte
-// order is not visible yet.
+// Memory is little-endian, like the hardware's DataMemory (memoria_datos_s): sb at address 24 writes
+// bits 7..0 of word 6, sb at address 27 writes bits 31..24.
 
 import { decode } from "../../src/decoder/index.js";
 import { HARDWARE } from "../../src/shared/hardware.js";

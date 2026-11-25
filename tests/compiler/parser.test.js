@@ -240,14 +240,16 @@ test("++ and -- are statements, not expressions", () => {
   assert.deepEqual(messagesOf("++i;"), ["prefix ++ is not supported; write i++ instead"]);
 });
 
-test("types other than int are not supported yet, but the rest is still parsed", () => {
-  assert.deepEqual(messagesOf("char c; unsigned u; unsigned char b; short s = 1 +;"), [
-    "type 'char' is not supported yet (only int for now)",
-    "type 'unsigned int' is not supported yet (only int for now)",
-    "type 'unsigned char' is not supported yet (only int for now)",
-    "type 'short' is not supported yet (only int for now)",
-    "expected an expression but found ';'",
-  ]);
+test("all six types are parsed with their full names", () => {
+  assert.deepEqual(
+    body("int a; unsigned b; unsigned int c; short d; unsigned short e; char f; unsigned char g;"),
+    ["int a;", "unsigned int b;", "unsigned int c;", "short d;", "unsigned short e;", "char f;", "unsigned char g;"],
+  );
+});
+
+test("arrays of every type, with or without initializer for scalars", () => {
+  assert.deepEqual(body("char s[8]; unsigned short h[2]; unsigned u = 5;"),
+    ["char s[8];", "unsigned short h[2];", "unsigned int u = 5;"]);
 });
 
 test("array declarations: constant length, no initializer", () => {

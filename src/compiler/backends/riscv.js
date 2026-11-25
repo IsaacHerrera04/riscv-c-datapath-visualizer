@@ -57,6 +57,19 @@ class CodegenError extends Error {
 }
 
 export function generateRiscv(ast, symbols, source = "") {
+  // TEMPORARY (removed in step 5.2): the frontend accepts all types, but this backend still
+  // only knows how to load, store and compare int.
+  const unsupported = symbols.find((symbol) => symbol.type !== "int");
+  if (unsupported) {
+    return {
+      asm: "",
+      errors: [{
+        line: unsupported.line,
+        message: `type '${unsupported.type}' is not supported by the RISC-V backend yet`,
+      }],
+    };
+  }
+
   const generator = new RiscvGenerator(symbols, source);
   const errors = [];
   try {
@@ -106,7 +119,7 @@ class RiscvGenerator {
         return;
 
       case "VarDecl":
-        // Without initializer there is no code: data memory starts at 0.
+        // Without initializer there is no code: this hardware's data memory starts at zero.
         if (node.init !== null) {
           this.startLine(node.line);
           this.store(node.name, null, node.init);

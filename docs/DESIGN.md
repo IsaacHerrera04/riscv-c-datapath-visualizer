@@ -137,8 +137,15 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 - The type only matters in three places:
   1. **Memory access width and sign:** load with `lb/lbu/lh/lhu/lw`, store with `sb/sh/sw`.
   2. **Array element size:** address = base + (index << log2(size)) — shifts, because there is no `mul`.
-  3. **Signedness of comparisons and `>>`:** if either operand (after promotion) is `unsigned int`,
-     use `sltu/sltiu/bltu/bgeu/srl/srli`; otherwise `slt/slti/blt/bge/sra/srai`.
+  3. **Signedness of comparisons and `>>`:** a comparison is unsigned if either operand (after
+     promotion) is `unsigned int` → `sltu/sltiu/bltu/bgeu`; otherwise `slt/slti/blt/bge`.
+     A shift takes the type of its **left** operand only: `>>` on `unsigned int` → `srl/srli`,
+     on `int` → `sra/srai` (`-8 >> u` stays arithmetic).
+- `unsigned char` and `unsigned short` promote to `int` (not `unsigned int`), because `int` can hold
+  all their values. Constants are `int`; in `u < -1` the `-1` is converted to `unsigned int`, as in C.
+- The rules live in `src/compiler/types.js` (frontend), so every target applies them identically.
+  Each `Binary` node carries `type` (type of the result) and `operandType` (type the operation works
+  in). They differ only for comparisons: `u < 5` compares as `unsigned int` but yields an `int`.
 
 ### How C maps to the 33 instructions
 
@@ -319,6 +326,10 @@ correspondence with the hardware project is always visible.
 | Instruction memory: 256 words | `MEMORIA_PROGRAMA.vhd` | Max 256 instructions per program |
 | Data memory: 256 words = 1024 bytes, uses `addr(9 downto 2)` | `MEMORIAA_S.vhd` | Max 1024 bytes of variables |
 | Misaligned accesses ignore low address bits | `MEMORIAA_S.vhd` | Compiler always aligns |
+| Little-endian: `sb` writes the byte selected by `addr(1:0)` (00 → bits 7..0), `sh` the half selected by `addr(1)` | `MEMORIAA_S.vhd` | Same byte order as standard RISC-V; the test simulator uses it |
+| Store width comes from `funct3(1:0)`: 00 `sb`, 01 `sh`, 10 `sw` (read-modify-write of the word) | `MEMORIAA_S.vhd` | `DataMemory` receives `funct3` |
+| Reads are asynchronous and return the whole word; `LoadExtender` picks the byte/half and extends it | `MEMORIAA_S.vhd` | Loads are combinational in the single-cycle view |
+| Data memory starts with every word at zero (the old test value at address 24 was removed) | `MEMORIAA_S.vhd` | A variable without initializer reads 0. This is a guarantee of this hardware, not of standard C |
 | x0 always reads 0, writes ignored | `BancoDeRegistros.vhd` | Standard RISC-V behavior |
 | `CONST` input = 4 | `MUX_PC.vhd` comment | `PC_INCREMENT = 4` |
 | Halt convention: `beq x0, x0, 0` | test program | Compiler ends every program with it |

@@ -54,3 +54,8 @@ test("mips and arm: the C program is checked, then 'not implemented yet'", () =>
     assert.deepEqual(compile("int main() { y = 1; }", target).errors, compile("int main() { y = 1; }").errors);
   }
 });
+
+test("until step 5.2, the RISC-V backend rejects types other than int with a clear error", () => {
+  assert.deepEqual(compile("int main() {\n  int a;\n  char c;\n}").errors,
+    [{ line: 3, message: "type 'char' is not supported by the RISC-V backend yet" }]);
+});

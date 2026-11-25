@@ -14,16 +14,10 @@
 // Pure function: the input tree is never modified. Every node is copied ({ ...node, type }).
 
 import { HARDWARE } from "../shared/hardware.js";
-
-// Bytes per element of each C type. Alignment = size (docs/DESIGN.md section 5).
-// Phase 1 only lets "int" through the parser; the rest is ready for phase 2.
-const TYPE_SIZES = Object.freeze({
-  "int": 4, "unsigned int": 4,
-  "short": 2, "unsigned short": 2,
-  "char": 1, "unsigned char": 1,
-});
+import { INT, TYPE_SIZES, promote, commonType, shiftType } from "./types.js";
 
 const SHIFT_OPERATORS = new Set(["<<", ">>"]);
+const COMPARISONS = new Set(["<", ">", "<=", ">=", "==", "!="]);
 
 export function analyze(program) {
   const analyzer = new Analyzer();
@@ -90,7 +84,8 @@ class Analyzer {
       }
       this.allocate(node);
     }
-    // Declared BEFORE its initializer is checked, as in C: "int x = x;" is legal (x reads 0 here).
+    // Declared BEFORE its initializer is checked, as in C: "int x = x;" is legal (x reads 0 here,
+    // because this hardware's data memory starts at zero).
     const init = node.init === null ? null : this.analyzeExpression(node.init);
     return { ...node, init };
   }
@@ -129,7 +124,8 @@ class Analyzer {
         const index = node.index === null ? null : this.analyzeExpression(node.index);
         const symbol = this.lookup(node);
         if (symbol) this.checkIndexing(node, symbol, index);
-        return { ...node, index, type: symbol ? symbol.type : "int" };
+        // The value read from a char/short variable is already promoted to int.
+        return { ...node, index, type: symbol ? promote(symbol.type) : INT };
       }
 
       case "Unary": {
@@ -138,14 +134,20 @@ class Analyzer {
         const folded = foldNegation(node);
         if (folded !== null) return this.literal(folded, node.line);
         const operand = this.analyzeExpression(node.operand);
-        return { ...node, operand, type: "int" }; // stage 5: integer promotion of the operand
+        return { ...node, operand, type: promote(operand.type) };
       }
 
       case "Binary": {
         const left = this.analyzeExpression(node.left);
         const right = this.analyzeExpression(node.right);
-        if (SHIFT_OPERATORS.has(node.op) && right.kind === "Number") this.checkShiftAmount(right);
-        return { ...node, left, right, type: "int" }; // stage 5: int / unsigned int from the operands
+        const isShift = SHIFT_OPERATORS.has(node.op);
+        if (isShift && right.kind === "Number") this.checkShiftAmount(right);
+        // operandType: the type the operation works in (decides signed vs unsigned instructions).
+        // type: the type of the result. They differ only for comparisons: u < 5 compares as
+        // unsigned int, but its result (0 or 1) is an int.
+        const operandType = isShift ? shiftType(left.type) : commonType(left.type, right.type);
+        const type = COMPARISONS.has(node.op) ? INT : operandType;
+        return { ...node, left, right, operandType, type };
       }
 
       default:
@@ -160,7 +162,7 @@ class Analyzer {
         `constant ${value} is out of range [${HARDWARE.IMM12_MIN}, ${HARDWARE.IMM12_MAX}] ` +
         "(larger constants would need lui, which the hardware does not have)");
     }
-    return { kind: "Number", value, line, type: "int" };
+    return { kind: "Number", value, line, type: INT }; // a constant like 5 is an int in C
   }
 
   // a << 40 is undefined behavior in C on every processor, so it is checked here (frontend)

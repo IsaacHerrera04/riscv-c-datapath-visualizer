@@ -42,9 +42,6 @@ const STEP_OPERATORS = new Map([["++", "+"], ["--", "-"]]);
 
 const TYPE_KEYWORDS = new Set(["int", "short", "char", "unsigned"]);
 
-// Types the compiler can generate code for. Stage 5 (all types) adds the rest.
-const SUPPORTED_TYPES = new Set(["int"]);
-
 // Used only inside this file to jump out of a broken statement. parse() catches it and turns it
 // into an entry of `errors`, so callers never see an exception.
 class ParseError extends Error {
@@ -204,11 +201,7 @@ class Parser {
       const next = this.peek();
       const hasSize = next.kind === "keyword" && ["int", "short", "char"].includes(next.value);
       if (hasSize) this.advance();
-      varType = hasSize ? `unsigned ${next.value}` : "unsigned int";
-    }
-    if (!SUPPORTED_TYPES.has(varType)) {
-      // Not fatal: the declaration is still parsed so later errors are found too.
-      this.report(new ParseError(first.line, `type '${varType}' is not supported yet (only int for now)`));
+      varType = hasSize ? `unsigned ${next.value}` : "unsigned int"; // plain "unsigned" means unsigned int
     }
     return varType;
   }
