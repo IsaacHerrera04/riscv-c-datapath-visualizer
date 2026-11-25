@@ -72,6 +72,8 @@ from the same 32-bit pattern. Bonus: if the assembler encodes something wrong, t
 // (a) Compiler
 compile(sourceC, target)   // target: "riscv" (default) | "mips" | "arm"
                            // → { asm: string, symbols: [...], errors: [{ line, message }] }
+                           //    symbols: [{ name, type, address, size, length, line }]
+                           //    (size = bytes per element; length = null for scalars)
                            //    an unknown target is reported as { line: null, message }
 
 // (b) Assembler
