@@ -180,6 +180,13 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
   low address bits, so misaligned accesses would read wrong data.
 - **Array access with a variable index:** compute `index << log2(size)` into a register, then use the
   array base as the immediate offset: `lw rd, base(rIndex)`.
+- **Registers:** expression temporaries come from the pool `x5 x6 x7 x10–x31`, are released right
+  after use, and the result reuses the left operand's register. More than 25 live values →
+  "expression too complex". The constant `0` is `x0`.
+- **Immediate forms** whenever the right operand is a constant (`addi andi ori xori slli srai slti`);
+  `a - k` is `addi rd, a, -k` because there is no `subi`.
+- **Conditions** branch to the end of the `if`/loop when they are **false** (`a < b` → `bge a, b, L`);
+  `a > b` and `a <= b` swap the operands (`bge b, a, L` / `blt b, a, L`).
 - **Loops** jump back with `beq x0, x0, label` (always taken) so no `jal` is needed.
 - **Every program ends with `beq x0, x0, 0`** (jump to itself = halt), same convention as the
   original hardware test program.
@@ -335,7 +342,10 @@ src/
   datapath/                (d) control.js, activity.js, svg.js, index.js
   ui/                      (e) main.js orchestrator, styles.css, examples.js
 tests/                     node --test, one file per module (+ end-to-end and coverage)
-scripts/assemble.js        command-line tool: node scripts/assemble.js <file.s> (demo programs in scripts/demo/)
+tests/helpers/rv32i-sim.js tiny RV32I simulator used only by tests (checks results of compiled programs)
+scripts/assemble.js        command-line tool: node scripts/assemble.js <file.s>
+scripts/compile.js         command-line tool: node scripts/compile.js <file.c> [--target riscv|mips|arm] [--machine]
+scripts/demo/              demo programs (.s for the assembler, .c for the compiler)
 docs/DESIGN.md             this file
 docs/img/                  schematic screenshot of the Active-HDL design
 ```
