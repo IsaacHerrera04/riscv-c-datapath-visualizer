@@ -125,6 +125,8 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 | pointers, structs, floats | out of scope |
 | constants outside `[-2048, 2047]` | would need `lui` (type U) |
 | octal constants (`017`) | in C a leading zero means octal (`017` = 15); rejected to avoid surprises |
+| `x = i++;`, `++i;`, `a = b = c;` | `++`, `--` and assignments are statements only (`i++;`), never values |
+| `for (int i = 0; ...)` | declare the variable before the loop; all variables share one scope |
 
 ### Type rules (follow real C semantics)
 
