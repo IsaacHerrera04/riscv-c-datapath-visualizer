@@ -327,6 +327,26 @@ Instruction fields are drawn as wires too: `instControl` (opcode, funct3, funct7
 (→ `BranchImmGen`), `instStoreSize` (funct3 → `DataMemory`), `instLoadSize` (funct3 → `LoadExtender`).
 The list of components and wires lives in `src/datapath/activity.js`.
 
+The web diagram (`src/datapath/svg.js`) keeps exactly these connections but rearranges the blocks
+so data flows left to right with few crossings: next-PC logic on top; PC → instruction memory →
+registers → ALU → data memory → write back in the middle; control unit and branch decision at the
+bottom. Instruction fields leave a vertical instruction bus; a field made of several slices of
+`INST` arrives as one input per slice, like the ports of the VHDL entity (`ControlUnit`: opcode,
+funct3, funct7; `ImmSelector`: [31:25], [24:20], [11:7]; `BranchImmGen`: [31:25], [11:7]). Every
+line ends with an arrow at the block that receives it, input ports are named inside each block,
+and control lines leave `ControlUnit` only by its top, right and bottom edges (its left edge only
+receives the instruction). Tests check that every piece of every wire starts at its source and
+lands on a destination, and that every control line goes from `ControlUnit` to its component.
+
+The highlight is animated as a trace: `src/datapath/flow.js` gives each used part a step, where a
+block is ready one step after the last of its inputs arrives (like a combinational circuit).
+Inputs stored only at the clock edge (`pcNext`, `writeBackData`, `instRd`, `regWrite`) do not delay
+their block, which breaks the two loops of the drawing. So a branch updates the PC last (it waits
+for the AND gate), while `add` has PC + 4 ready early. The order still depends only on the
+instruction type: it is not an execution. After the trace, small sparks keep moving along the used
+lines; a "neon" class switches to a glowing palette, and systems set to reduce motion get no
+animation.
+
 ### 7.4 ALU operation codes
 
 | Code | Op | Code | Op |
@@ -369,7 +389,7 @@ src/
   compiler/backends/       (a) riscv.js, mips.js, arm.js (code generation per target)
   assembler/               (b)
   decoder/                 (c) fields.js, segments.js, disassemble.js, index.js
-  datapath/                (d) control.js, activity.js, svg.js, index.js
+  datapath/                (d) control.js, activity.js, flow.js, svg.js, index.js
   ui/                      (e) main.js orchestrator, styles.css, examples.js
 tests/                     node --test, one file per module (+ end-to-end and coverage)
 tests/helpers/rv32i-sim.js tiny RV32I simulator used only by tests (checks results of compiled programs)

@@ -28,7 +28,7 @@
       margin: 0; padding: 32px 24px 48px; background: var(--bg); color: var(--text);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-    main { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+    main { max-width: 1280px; margin: 0 auto; display: grid; gap: 20px; }
     h1 { margin: 0; font-size: 22px; }
     h2 { margin: 0 0 14px; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
     .subtitle { margin: 4px 0 0; color: var(--muted); }
@@ -74,7 +74,10 @@
     .chip small { opacity: .75; font-weight: 400; }
     .legend { color: var(--muted); font-size: 13px; margin: -6px 0 14px; }
     h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
-    .placeholder { color: var(--muted); text-align: center; padding: 40px 0; border: 2px dashed var(--border); border-radius: 10px; }
+    #diagram svg { display: block; width: 100%; height: auto; }
+    .diagram-controls { display: flex; gap: 14px; align-items: center; margin: -4px 0 12px; }
+    .diagram-controls label { color: var(--muted); font-size: 14px; display: flex; gap: 6px; align-items: center; }
+    .diagram-controls button { padding: 5px 12px; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -123,7 +126,12 @@
 
     <section class="card">
       <h2>Datapath</h2>
-      <div class="placeholder">The highlighted diagram arrives in step 6.3.</div>
+      <p class="legend">Orange = data used · dashed = depends on the branch result · blue = control signal at 1 (or the ALU code) · faded = idle. Arrows point into the block that receives the value. The trace follows the order in which each block gets its inputs. Hover a line for its name.</p>
+      <div class="diagram-controls">
+        <button type="button" id="replay">▶ Replay</button>
+        <label><input type="checkbox" id="neon"> Neon</label>
+      </div>
+      <div id="diagram"></div>
     </section>
   </main>
 
@@ -134,6 +142,8 @@
     import { INSTRUCTIONS } from "../../src/shared/instructions.js";
     import { controlSignals, aluControlBits, CONTROL_SIGNALS } from "../../src/datapath/control.js";
     import { activePaths, COMPONENTS, WIRES } from "../../src/datapath/activity.js";
+    import { DATAPATH_SVG } from "../../src/datapath/svg.js";
+    import { flowSteps } from "../../src/datapath/flow.js";
 
     const TYPE_NAMES = { R: "R · register", I: "I · immediate", L: "L · load", S: "S · store", B: "B · branch" };
 
@@ -184,6 +194,66 @@
         chip(name, vhdlName, paths.components.includes(name) ? "on" : "")));
       $("wires").replaceChildren(...WIRES.map(({ name }) =>
         chip(name, null, paths.wires.includes(name) ? "on" : paths.conditionalWires.includes(name) ? "conditional" : "")));
+
+      highlight(decoded, signals, paths);
+    }
+
+    // ---------- the diagram (step 6.4 will compute the labels inside the datapath module) ----------
+
+    $("diagram").innerHTML = DATAPATH_SVG; // inserted once; each instruction only changes classes and text
+
+    function highlight(decoded, signals, paths) {
+      const steps = flowSteps(paths); // when each part receives its value (for the animation)
+      for (const { name } of COMPONENTS) {
+        setState(`comp-${name}`, paths.components.includes(name) ? "active" : "inactive", steps.components[name]);
+      }
+      for (const { name } of WIRES) {
+        const state = paths.wires.includes(name) ? "active"
+          : paths.conditionalWires.includes(name) ? "conditional" : "inactive";
+        setState(`wire-${name}`, state, steps.wires[name]);
+      }
+      for (const { name } of CONTROL_SIGNALS) {
+        const on = name === "aluControl" || signals[name] === 1;
+        setState(`ctrl-${name}`, on ? "active" : "inactive", steps.controls[name]);
+        const value = name === "aluControl" ? aluControlBits(signals.aluControl) : signals[name];
+        setLabel(name, `${name} ${value}`);
+      }
+      const register = (n) => (n === null ? "" : `x${n}`);
+      setLabel("rs1", decoded.rs1 === null ? "" : `rs1 ${register(decoded.rs1)}`);
+      setLabel("rs2", decoded.rs2 === null ? "" : `rs2 ${register(decoded.rs2)}`);
+      setLabel("rd", decoded.rd === null ? "" : `rd ${register(decoded.rd)}`);
+      setLabel("imm", decoded.imm !== null && decoded.type !== "B" ? `imm ${decoded.imm}` : "");
+      setLabel("branchImm", decoded.type === "B" ? `${decoded.imm}` : "");
+      setLabel("aluOperation", signals.aluOperationName);
+      play();
+    }
+
+    // Restart the trace: remove "playing", let the browser notice (reading the size forces it to
+    // recompute the styles), and add it again, so every animation starts from zero.
+    function play() {
+      const svg = $("diagram").querySelector("svg");
+      svg.classList.remove("playing");
+      void svg.getBoundingClientRect();
+      svg.classList.add("playing");
+    }
+
+    $("replay").addEventListener("click", play);
+    $("neon").addEventListener("change", () => {
+      $("diagram").querySelector("svg").classList.toggle("neon", $("neon").checked);
+    });
+
+    // Wires drawn later are on top: move the used ones to the end so a shared stretch
+    // (like the ALU output, which branches three ways) shows the active color.
+    function setState(id, state, step) {
+      const element = document.getElementById(id);
+      element.classList.remove("active", "inactive", "conditional");
+      element.classList.add(state);
+      element.style.setProperty("--step", step ?? 0); // read by the CSS animation delays
+      if (state !== "inactive") element.parentNode.append(element);
+    }
+
+    function setLabel(name, text) {
+      document.getElementById(`label-${name}`).textContent = text;
     }
 
     // "ALU" with its VHDL name in small text; state: "on", "conditional" or "" (idle).
@@ -239,9 +309,19 @@
       show($("source").value);
     });
 
-    $("examples").value = new URLSearchParams(location.search).get("i") ?? "bne x5, x6, 8";
+    // URL options: ?i=<instruction>  &neon=1 (neon palette)  &t=2.5 (freeze the animation at 2.5 s)
+    const params = new URLSearchParams(location.search);
+    $("neon").checked = params.has("neon");
+    $("diagram").querySelector("svg").classList.toggle("neon", $("neon").checked);
+    $("examples").value = params.get("i") ?? "bne x5, x6, 8";
     $("source").value = $("examples").value;
     show($("source").value);
+    if (params.has("t")) {
+      for (const animation of document.getAnimations()) {
+        animation.pause();
+        animation.currentTime = Number(params.get("t")) * 1000;
+      }
+    }
   </script>
 </body>
 </html>
