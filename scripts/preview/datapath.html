@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datapath preview</title>
+  <!--
+    Development page (not the final UI): shows what the datapath module computes for one
+    instruction, so it can be checked in the browser while stage 6 is built.
+    Run from the repository root:  python -m http.server 8000
+    Then open:                     http://localhost:8000/scripts/preview/datapath.html
+  -->
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
+      --accent: #2f6fde; --on: #1f9d55; --on-bg: #e3f6ea; --off-bg: #f0f2f5; --error: #c0392b;
+      --opcode: #8e44ad; --rd: #2f6fde; --rs1: #16a085; --rs2: #d35400; --funct: #7f8c8d; --imm: #c0392b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #98a2b3; --border: #2c333f;
+        --accent: #6ea0ff; --on: #4ade80; --on-bg: #163524; --off-bg: #232935; --error: #ff7b6b;
+        --opcode: #c39bd3; --rd: #6ea0ff; --rs1: #48c9b0; --rs2: #f0a35e; --funct: #aab4be; --imm: #ff7b6b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 32px 24px 48px; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+    h1 { margin: 0; font-size: 22px; }
+    h2 { margin: 0 0 14px; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .subtitle { margin: 4px 0 0; color: var(--muted); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; }
+    code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+    .picker { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    select, input, button {
+      font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px;
+    }
+    input { flex: 1; min-width: 220px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    button { background: var(--accent); border-color: var(--accent); color: #fff; cursor: pointer; font-weight: 600; }
+    .error { color: var(--error); margin: 12px 0 0; font-weight: 500; }
+
+    .instruction-line { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; margin-bottom: 16px; }
+    .asm { font-size: 22px; font-weight: 600; }
+    .hex { color: var(--muted); }
+    .badge { padding: 2px 10px; border-radius: 999px; background: var(--off-bg); font-size: 13px; font-weight: 600; }
+
+    .segments { display: flex; flex-wrap: wrap; gap: 4px; }
+    .segment { border-radius: 8px; padding: 6px 10px; text-align: center; border-top: 4px solid var(--seg); background: var(--off-bg); }
+    .segment .bits { font-size: 15px; letter-spacing: .08em; }
+    .segment .field { font-size: 12px; color: var(--seg); font-weight: 700; }
+    .segment .value { font-size: 12px; color: var(--muted); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .signal { font-weight: 600; }
+    .vhdl { color: var(--muted); }
+    .value { display: inline-block; min-width: 34px; text-align: center; padding: 2px 10px; border-radius: 6px; font-weight: 700; background: var(--off-bg); color: var(--muted); }
+    .value.on { background: var(--on-bg); color: var(--on); }
+    .value.alu { background: var(--on-bg); color: var(--on); }
+    .meaning { color: var(--muted); }
+
+    .placeholder { color: var(--muted); text-align: center; padding: 40px 0; border: 2px dashed var(--border); border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Datapath preview</h1>
+      <p class="subtitle">One instruction → its fields and the control signals of <code>control_04</code>.</p>
+    </header>
+
+    <section class="card">
+      <h2>Instruction</h2>
+      <form class="picker" id="picker">
+        <select id="examples" aria-label="Example instructions"></select>
+        <input id="source" aria-label="Instruction" spellcheck="false" autocomplete="off">
+        <button type="submit">Show</button>
+      </form>
+      <p class="error" id="error" hidden></p>
+    </section>
+
+    <section class="card" id="decoded-card" hidden>
+      <h2>Machine code</h2>
+      <div class="instruction-line">
+        <span class="asm mono" id="asm"></span>
+        <span class="hex mono" id="hex"></span>
+        <span class="badge" id="type"></span>
+      </div>
+      <div class="segments mono" id="segments"></div>
+    </section>
+
+    <section class="card" id="signals-card" hidden>
+      <h2>Control signals</h2>
+      <table>
+        <thead><tr><th>Signal</th><th>VHDL</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody id="signals"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Datapath</h2>
+      <div class="placeholder">The highlighted diagram arrives in step 6.3.</div>
+    </section>
+  </main>
+
+  <script type="module">
+    // A development tool may connect several modules, like the tests do.
+    import { assemble } from "../../src/assembler/index.js";
+    import { decode } from "../../src/decoder/index.js";
+    import { INSTRUCTIONS } from "../../src/shared/instructions.js";
+    import { controlSignals, aluControlBits, CONTROL_SIGNALS } from "../../src/datapath/control.js";
+
+    const TYPE_NAMES = { R: "R · register", I: "I · immediate", L: "L · load", S: "S · store", B: "B · branch" };
+
+    // One example per instruction, with operands that fit its format.
+    function exampleOf({ name, type }) {
+      const operands = {
+        R: "x5, x6, x7",
+        I: ["slli", "srli", "srai"].includes(name) ? "x5, x6, 3" : "x5, x6, -12",
+        L: "x5, 8(x6)",
+        S: "x7, 8(x6)",
+        B: "x5, x6, 8",
+      };
+      return `${name} ${operands[type]}`;
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    // Examples grouped by type in the dropdown.
+    for (const type of Object.keys(TYPE_NAMES)) {
+      const group = document.createElement("optgroup");
+      group.label = TYPE_NAMES[type];
+      for (const instruction of INSTRUCTIONS.filter((i) => i.type === type)) {
+        group.append(new Option(exampleOf(instruction)));
+      }
+      $("examples").append(group);
+    }
+
+    function show(text) {
+      const { program, errors } = assemble(text);
+      const problem = errors[0]?.message ?? (program.length === 0 ? "Write one instruction" : null);
+      $("error").hidden = problem === null;
+      $("error").textContent = problem ?? "";
+      $("decoded-card").hidden = $("signals-card").hidden = problem !== null;
+      if (problem !== null) return;
+
+      const { word } = program[0];
+      const decoded = decode(word);
+      $("asm").textContent = text.trim();
+      $("hex").textContent = "0x" + word.toString(16).toUpperCase().padStart(8, "0");
+      $("type").textContent = TYPE_NAMES[decoded.type];
+      $("segments").replaceChildren(...decoded.segments.map(segmentElement));
+
+      const signals = controlSignals(decoded);
+      $("signals").replaceChildren(...CONTROL_SIGNALS.map((info) => signalRow(info, signals)));
+    }
+
+    // Colors by field: imm[11:0], imm[4:0], ... all share the immediate color.
+    function segmentElement({ field, bits, value }) {
+      const color = field.startsWith("imm") ? "imm" : field.startsWith("funct") ? "funct" : field;
+      const element = document.createElement("div");
+      element.className = "segment";
+      element.style.setProperty("--seg", `var(--${color})`);
+      element.innerHTML = `<div class="field"></div><div class="bits"></div><div class="value"></div>`;
+      element.querySelector(".field").textContent = field;
+      element.querySelector(".bits").textContent = bits;
+      element.querySelector(".value").textContent = value;
+      return element;
+    }
+
+    function signalRow({ name, vhdlName, meaning }, signals) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td class="signal mono"></td><td class="vhdl mono"></td>
+        <td><span class="value mono"></span></td><td class="meaning"></td>`;
+      row.querySelector(".signal").textContent = name;
+      row.querySelector(".vhdl").textContent = vhdlName;
+      row.querySelector(".meaning").textContent = meaning;
+      const value = row.querySelector(".value");
+      if (name === "aluControl") {
+        value.textContent = `${aluControlBits(signals.aluControl)} ${signals.aluOperationName}`;
+        value.classList.add("alu");
+      } else {
+        value.textContent = signals[name];
+        value.classList.toggle("on", signals[name] === 1);
+      }
+      return row;
+    }
+
+    $("examples").addEventListener("change", () => {
+      $("source").value = $("examples").value;
+      show($("source").value);
+    });
+    $("picker").addEventListener("submit", (event) => {
+      event.preventDefault(); // stay on the page
+      show($("source").value);
+    });
+
+    $("examples").value = "bne x5, x6, 8";
+    $("source").value = $("examples").value;
+    show($("source").value);
+  </script>
+</body>
+</html>

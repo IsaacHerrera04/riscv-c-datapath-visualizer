@@ -362,6 +362,8 @@ tests/helpers/rv32i-sim.js tiny RV32I simulator used only by tests (checks resul
 scripts/assemble.js        command-line tool: node scripts/assemble.js <file.s>
 scripts/compile.js         command-line tool: node scripts/compile.js <file.c> [--target riscv|mips|arm] [--machine]
 scripts/demo/              demo programs (.s for the assembler, .c for the compiler)
+scripts/preview/           development pages for the browser (datapath.html: fields, control
+                           signals and, from step 6.3, the highlighted diagram of one instruction)
 docs/DESIGN.md             this file
 docs/img/                  schematic screenshot of the Active-HDL design
 ```
