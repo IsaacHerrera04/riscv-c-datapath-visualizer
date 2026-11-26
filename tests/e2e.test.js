@@ -63,6 +63,17 @@ test("count-bits.c: 0x5A3 has 6 bits set", () => {
   assert.equal(read("x"), 0);
 });
 
+test("all-types.c: every type and every instruction give the values in its comments", () => {
+  const { read, words } = compileAndRun(demo("all-types.c"));
+  assert.deepEqual([0, 1, 2, 3].map((i) => read("c", i)), [-2, -1, 0, 1]);    // lb
+  assert.deepEqual([0, 1, 2, 3].map((i) => read("b", i)), [254, 255, 0, 1]);  // lbu: the same bytes
+  assert.deepEqual([read("s", 0), read("s", 1), read("h", 0), read("h", 1)], [-300, -600, 65236, 1000]);
+  assert.deepEqual([read("sum"), read("big"), read("total"), read("flags")], [-2, 510, 65336, 7]);
+  assert.deepEqual(Array.from({ length: 12 }, (_, i) => read("r", i)),
+    [1, 0, 1, 0, -1, -3, 16, 268435455, -1, 510, 510, 27]);
+  assert.ok(words.length <= 256, `${words.length} instructions`);
+});
+
 test("errors.c: every semantic error is reported with its line", () => {
   assert.deepEqual(compile(demo("errors.c")).errors, [
     { line: 6, message: "'b' is not declared" },
@@ -110,7 +121,7 @@ test("if/else, while and return", () => {
 // ---------- every compiled word goes through the whole chain ----------
 
 test("every compiled word decodes, and disassembles back to the same word", () => {
-  for (const name of ["sum-array.c", "fibonacci.c", "max-of-array.c", "count-bits.c"]) {
+  for (const name of ["sum-array.c", "fibonacci.c", "max-of-array.c", "count-bits.c", "all-types.c"]) {
     const { words } = compileAndRun(demo(name));
     for (const word of words) {
       const decoded = decode(word);
