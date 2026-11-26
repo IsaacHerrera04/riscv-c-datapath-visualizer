@@ -66,6 +66,14 @@
     .value.alu { background: var(--on-bg); color: var(--on); }
     .meaning { color: var(--muted); }
 
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+    .chips:last-child { margin-bottom: 0; }
+    .chip { padding: 4px 10px; border-radius: 999px; font-size: 13px; border: 1px solid var(--border); color: var(--muted); opacity: .55; }
+    .chip.on { background: var(--on-bg); color: var(--on); border-color: transparent; opacity: 1; font-weight: 600; }
+    .chip.conditional { border: 1px dashed var(--on); color: var(--on); opacity: 1; font-weight: 600; }
+    .chip small { opacity: .75; font-weight: 400; }
+    .legend { color: var(--muted); font-size: 13px; margin: -6px 0 14px; }
+    h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
     .placeholder { color: var(--muted); text-align: center; padding: 40px 0; border: 2px dashed var(--border); border-radius: 10px; }
   </style>
 </head>
@@ -104,6 +112,15 @@
       </table>
     </section>
 
+    <section class="card" id="paths-card" hidden>
+      <h2>Hardware used</h2>
+      <p class="legend">Green = used by this instruction · dashed = depends on the branch result · grey = idle</p>
+      <h3>Components</h3>
+      <div class="chips" id="components"></div>
+      <h3>Wires</h3>
+      <div class="chips mono" id="wires"></div>
+    </section>
+
     <section class="card">
       <h2>Datapath</h2>
       <div class="placeholder">The highlighted diagram arrives in step 6.3.</div>
@@ -116,6 +133,7 @@
     import { decode } from "../../src/decoder/index.js";
     import { INSTRUCTIONS } from "../../src/shared/instructions.js";
     import { controlSignals, aluControlBits, CONTROL_SIGNALS } from "../../src/datapath/control.js";
+    import { activePaths, COMPONENTS, WIRES } from "../../src/datapath/activity.js";
 
     const TYPE_NAMES = { R: "R · register", I: "I · immediate", L: "L · load", S: "S · store", B: "B · branch" };
 
@@ -148,7 +166,7 @@
       const problem = errors[0]?.message ?? (program.length === 0 ? "Write one instruction" : null);
       $("error").hidden = problem === null;
       $("error").textContent = problem ?? "";
-      $("decoded-card").hidden = $("signals-card").hidden = problem !== null;
+      for (const card of ["decoded-card", "signals-card", "paths-card"]) $(card).hidden = problem !== null;
       if (problem !== null) return;
 
       const { word } = program[0];
@@ -160,6 +178,25 @@
 
       const signals = controlSignals(decoded);
       $("signals").replaceChildren(...CONTROL_SIGNALS.map((info) => signalRow(info, signals)));
+
+      const paths = activePaths(decoded);
+      $("components").replaceChildren(...COMPONENTS.map(({ name, vhdlName }) =>
+        chip(name, vhdlName, paths.components.includes(name) ? "on" : "")));
+      $("wires").replaceChildren(...WIRES.map(({ name }) =>
+        chip(name, null, paths.wires.includes(name) ? "on" : paths.conditionalWires.includes(name) ? "conditional" : "")));
+    }
+
+    // "ALU" with its VHDL name in small text; state: "on", "conditional" or "" (idle).
+    function chip(name, vhdlName, state) {
+      const element = document.createElement("span");
+      element.className = `chip ${state}`;
+      element.textContent = name;
+      if (vhdlName) {
+        const small = document.createElement("small");
+        small.textContent = ` ${vhdlName}`;
+        element.append(small);
+      }
+      return element;
     }
 
     // Colors by field: imm[11:0], imm[4:0], ... all share the immediate color.
@@ -202,7 +239,7 @@
       show($("source").value);
     });
 
-    $("examples").value = "bne x5, x6, 8";
+    $("examples").value = new URLSearchParams(location.search).get("i") ?? "bne x5, x6, 8";
     $("source").value = $("examples").value;
     show($("source").value);
   </script>

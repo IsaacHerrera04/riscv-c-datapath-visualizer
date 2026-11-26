@@ -311,7 +311,21 @@ correspondence with the hardware project is always visible.
 | `BUS78` | `rs2Data` | `NET1535` | `condBit` |
 | `BUS325` | `imm12` | `NET1574` | `condition` |
 | `BUS90` | `immExt` | `NET1715` | `branchTaken` |
-| `INST` | `instruction` | `CONST` | constant 4 |
+| `INST` | `instruction` | `CONST` | constant 4 (`const4`) |
+
+A net that goes to several places is split into one wire per destination in the web diagram, so
+only the branch an instruction uses is highlighted:
+
+| Branch | Net | Destination |
+|---|---|---|
+| `storeData` | `BUS78` (rs2) | `DataMemory` input `di` (`rs2Data` is the branch to `ALUSrcMux`) |
+| `memAddress` | `BUS1408` (ALU result) | `DataMemory` and `LoadExtender` address |
+| `aluCompare` | `BUS1408` | `ConditionBit` (`aluResult` is the branch to `WriteBackMux`) |
+
+Instruction fields are drawn as wires too: `instControl` (opcode, funct3, funct7 → `ControlUnit`),
+`instRs1`, `instRs2`, `instRd` (→ `RegisterFile`), `instImm` (→ `ImmSelector`), `instBranchImm`
+(→ `BranchImmGen`), `instStoreSize` (funct3 → `DataMemory`), `instLoadSize` (funct3 → `LoadExtender`).
+The list of components and wires lives in `src/datapath/activity.js`.
 
 ### 7.4 ALU operation codes
 
