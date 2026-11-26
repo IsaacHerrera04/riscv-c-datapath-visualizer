@@ -8,7 +8,12 @@ import { readFileSync } from "node:fs";
 import { compile } from "../src/compiler/index.js";
 import { assemble } from "../src/assembler/index.js";
 import { decode, disassemble } from "../src/decoder/index.js";
-import { run, readWord } from "./helpers/rv32i-sim.js";
+import { run, load } from "./helpers/rv32i-sim.js";
+
+// How C reads a variable of each type (the same instruction the compiler uses).
+const READ_AS = {
+  "int": "lw", "unsigned int": "lw", "short": "lh", "unsigned short": "lhu", "char": "lb", "unsigned char": "lbu",
+};
 
 // Compiles and runs a C program. Returns a function to read variables by name after it halts.
 function compileAndRun(source) {
@@ -24,7 +29,8 @@ function compileAndRun(source) {
   const symbols = new Map(compiled.symbols.map((symbol) => [symbol.name, symbol]));
   const read = (name, index = 0) => {
     const symbol = symbols.get(name);
-    return readWord(memory, symbol.address + index * symbol.size);
+    const value = load(READ_AS[symbol.type], memory, symbol.address + index * symbol.size);
+    return symbol.type === "unsigned int" ? value >>> 0 : value; // show unsigned int as unsigned
   };
   return { read, words, asm: compiled.asm };
 }
@@ -112,4 +118,46 @@ test("every compiled word decodes, and disassembles back to the same word", () =
       assert.equal(assemble(disassemble(decoded)).program[0].word, word);
     }
   }
+});
+
+// ---------- phase 2: every type (results checked in the simulator) ----------
+
+test("stores keep only the low bits; loads extend with or without sign", () => {
+  const { read } = compileAndRun(`int main() {
+    char c = 300;           // 300 = 0x12C → stores 0x2C = 44
+    char d = 200;           // 0xC8: bit 7 is 1 → reads -56
+    unsigned char e = 200;  // the same byte read without sign → 200
+    short s; unsigned short h;
+    s = 1 << 15;            // 0x8000 → -32768
+    h = 1 << 15;            //        → 32768
+  }`);
+  assert.deepEqual([read("c"), read("d"), read("e"), read("s"), read("h")], [44, -56, 200, -32768, 32768]);
+});
+
+test("unsigned comparisons and shifts: -1 is the largest unsigned number", () => {
+  const { read } = compileAndRun(`int main() {
+    unsigned u = -1;  int a = -1;  int r[6];
+    r[0] = u < 1;     // unsigned: 4294967295 < 1 → 0
+    r[1] = a < 1;     // signed:   -1 < 1        → 1
+    r[2] = u >> 28;   // srli: 0xFFFFFFFF >> 28  → 15
+    r[3] = a >> 28;   // srai: copies the sign   → -1
+    r[4] = a < u;     // a is converted to unsigned: 0xFFFFFFFF < 0xFFFFFFFF → 0
+    if (u > 5) r[5] = 1; else r[5] = 2;   // bltu/bgeu path
+  }`);
+  assert.deepEqual(Array.from({ length: 6 }, (_, i) => read("r", i)), [0, 1, 15, -1, 0, 1]);
+  assert.equal(read("u"), 4294967295);
+});
+
+test("arrays of every element size are indexed with the right scaling", () => {
+  const { read } = compileAndRun(`int main() {
+    char c[5]; short s[5]; int w[5]; int i;
+    for (i = 0; i < 5; i++) {
+      c[i] = i - 2;     // index not scaled
+      s[i] = i << 8;    // index << 1
+      w[i] = c[i] + s[i];
+    }
+  }`);
+  assert.deepEqual([0, 1, 2, 3, 4].map((i) => read("c", i)), [-2, -1, 0, 1, 2]);
+  assert.deepEqual([0, 1, 2, 3, 4].map((i) => read("s", i)), [0, 256, 512, 768, 1024]);
+  assert.deepEqual([0, 1, 2, 3, 4].map((i) => read("w", i)), [-2, 255, 512, 769, 1026]);
 });

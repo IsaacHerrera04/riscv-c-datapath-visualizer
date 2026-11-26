@@ -268,3 +268,66 @@ test("exactly 256 instructions fit", () => {
   const lines = Array.from({ length: 127 }, () => "a = 1;").join("\n");
   assert.deepEqual(generate(`int a;\n${lines}\na = 0;`).errors, []); // 254 + 1 + halt = 256
 });
+
+// ---------- phase 2: every type ----------
+
+test("loads by declared type: lw, lh, lhu, lb, lbu", () => {
+  assert.deepEqual(
+    body("int a; unsigned u; short s; unsigned short h; char c; unsigned char b; int x;\n" +
+      "x = a; x = u; x = s; x = h; x = c; x = b;").filter((line) => line.startsWith("l")),
+    ["lw x5, 0(x0)", "lw x5, 4(x0)", "lh x5, 8(x0)", "lhu x5, 10(x0)", "lb x5, 12(x0)", "lbu x5, 13(x0)"],
+  );
+});
+
+test("stores by size only: sw, sh, sb (the sign does not matter when storing)", () => {
+  assert.deepEqual(
+    body("unsigned u = 1; short s = 1; unsigned short h = 1; char c = 1; unsigned char b = 1;")
+      .filter((line) => line.startsWith("s")),
+    ["sw x5, 0(x0)", "sh x5, 4(x0)", "sh x5, 6(x0)", "sb x5, 8(x0)", "sb x5, 9(x0)"],
+  );
+});
+
+test("array index scaling by element size: << 2, << 1, none", () => {
+  const scaled = (type) => body(`${type} v[4]; int i;\nv[i] = 1;`);
+  assert.deepEqual(scaled("int"), ["addi x5, x0, 1", "lw x6, 16(x0)", "slli x6, x6, 2", "sw x5, 0(x6)"]);
+  assert.deepEqual(scaled("short"), ["addi x5, x0, 1", "lw x6, 8(x0)", "slli x6, x6, 1", "sh x5, 0(x6)"]);
+  assert.deepEqual(scaled("char"), ["addi x5, x0, 1", "lw x6, 4(x0)", "sb x5, 0(x6)"]);
+});
+
+test("constant index of a short array: offset = index * 2", () => {
+  assert.deepEqual(body("short v[4]; int x;\nx = v[3];"), ["lh x5, 6(x0)", "sw x5, 8(x0)"]);
+});
+
+test("unsigned comparisons as values: sltu / sltiu", () => {
+  const decl = "unsigned u; unsigned w; int x;\n";
+  assert.deepEqual(body(decl + "x = u < w;").slice(2, 3), ["sltu x5, x5, x6"]);
+  assert.deepEqual(body(decl + "x = u > w;").slice(2, 3), ["sltu x5, x6, x5"]);
+  assert.deepEqual(body(decl + "x = u < 5;").slice(1, 2), ["sltiu x5, x5, 5"]);
+  assert.deepEqual(body(decl + "x = u >= 5;").slice(1, 3), ["sltiu x5, x5, 5", "xori x5, x5, 1"]);
+});
+
+test("unsigned conditions branch with bltu / bgeu", () => {
+  const branchOf = (cond) =>
+    body(`unsigned u; unsigned w;\nif (${cond}) u = 1;`).find((line) => line.startsWith("b"));
+  assert.equal(branchOf("u < w"), "bgeu x5, x6, L0");
+  assert.equal(branchOf("u >= w"), "bltu x5, x6, L0");
+  assert.equal(branchOf("u > w"), "bgeu x6, x5, L0");
+  assert.equal(branchOf("u <= w"), "bltu x6, x5, L0");
+  assert.equal(branchOf("u == w"), "bne x5, x6, L0"); // equality has no signed/unsigned version
+});
+
+test(">> on unsigned int is logical (srl / srli); on int it stays arithmetic", () => {
+  assert.deepEqual(body("unsigned u; int a;\nu = u >> 3;").slice(1, 2), ["srli x5, x5, 3"]);
+  assert.deepEqual(body("unsigned u; int a;\nu = u >> a;").slice(2, 3), ["srl x5, x5, x6"]);
+  assert.deepEqual(body("unsigned u; int a;\na = a >> u;").slice(2, 3), ["sra x5, x5, x6"]);
+});
+
+test("small unsigned types are promoted to int: signed comparison", () => {
+  // unsigned char → int, so b < 5 compares as int (slti), the C rule
+  assert.deepEqual(body("unsigned char b; int x;\nx = b < 5;").slice(0, 2), ["lbu x5, 0(x0)", "slti x5, x5, 5"]);
+});
+
+test("the memory map widens its columns for long type names", () => {
+  const { asm } = generate("unsigned short h;\nint a;");
+  assert.match(asm, /^# Memory map\n# {3}h {6}unsigned short 0x000\n# {3}a {6}int {12}0x004\n/);
+});

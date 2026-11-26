@@ -14,6 +14,7 @@
 
 import { HARDWARE } from "../../shared/hardware.js";
 import { registerName } from "../../shared/registers.js";
+import { isUnsigned } from "../types.js";
 
 const ZERO = registerName(0);
 
@@ -21,8 +22,8 @@ const ZERO = registerName(0);
 // (s0, s1) are never used, so the output stays easy to read.
 const TEMPORARIES = Object.freeze([5, 6, 7, ...range(10, 31)].map(registerName));
 
-// Binary operator → register form / immediate form. ">>" is arithmetic because the operands
-// are int (stage 5: srl/srli for unsigned).
+// Binary operator → register form / immediate form, in their SIGNED version.
+// withSign() swaps in the unsigned twin when the operation works in unsigned int.
 const REGISTER_FORM = new Map([
   ["+", "add"], ["-", "sub"], ["&", "and"], ["|", "or"], ["^", "xor"], ["<<", "sll"], [">>", "sra"],
 ]);
@@ -42,9 +43,25 @@ const BRANCH_IF_FALSE = new Map([
   ["!=", { op: "beq", swap: false }],
 ]);
 
-// Memory access by variable type (stage 5 adds short/char: lh/lhu/lb/lbu, sh/sb).
-const LOAD = new Map([["int", "lw"]]);
-const STORE = new Map([["int", "sw"]]);
+// Signed instruction → its unsigned twin. Instructions without a twin (add, sub, xor, beq, ...)
+// give the same bits signed or unsigned in two's complement, so they are used as they are.
+const UNSIGNED_TWIN = new Map([
+  ["slt", "sltu"], ["slti", "sltiu"], ["blt", "bltu"], ["bge", "bgeu"], ["sra", "srl"], ["srai", "srli"],
+]);
+
+// Memory access by the declared type of the variable. Loads must know the sign to fill the upper
+// bits (lb copies bit 7, lbu fills with zeros); stores only keep the low 8/16 bits, so the sign
+// does not matter (char c = 300 stores 300 & 0xFF = 44, as in C).
+const LOAD = new Map([
+  ["int", "lw"], ["unsigned int", "lw"],
+  ["short", "lh"], ["unsigned short", "lhu"],
+  ["char", "lb"], ["unsigned char", "lbu"],
+]);
+const STORE = new Map([
+  ["int", "sw"], ["unsigned int", "sw"],
+  ["short", "sh"], ["unsigned short", "sh"],
+  ["char", "sb"], ["unsigned char", "sb"],
+]);
 
 const HALT = HARDWARE.HALT_LABEL;
 
@@ -57,19 +74,6 @@ class CodegenError extends Error {
 }
 
 export function generateRiscv(ast, symbols, source = "") {
-  // TEMPORARY (removed in step 5.2): the frontend accepts all types, but this backend still
-  // only knows how to load, store and compare int.
-  const unsupported = symbols.find((symbol) => symbol.type !== "int");
-  if (unsupported) {
-    return {
-      asm: "",
-      errors: [{
-        line: unsupported.line,
-        message: `type '${unsupported.type}' is not supported by the RISC-V backend yet`,
-      }],
-    };
-  }
-
   const generator = new RiscvGenerator(symbols, source);
   const errors = [];
   try {
@@ -198,7 +202,7 @@ class RiscvGenerator {
       const left = this.genExpr(cond.left);
       const right = this.genExpr(cond.right);
       const [first, second] = branch.swap ? [right, left] : [left, right];
-      this.emit(branch.op, first, second, label);
+      this.emit(withSign(branch.op, cond.operandType), first, second, label); // bge → bgeu if unsigned
       this.release(left, right);
       return;
     }
@@ -294,12 +298,12 @@ class RiscvGenerator {
     const immediate = this.immediateOperand(node);
     if (immediate !== null) {
       const result = this.resultRegister(left);
-      this.emit(immediate.op, result, left, immediate.value);
+      this.emit(withSign(immediate.op, node.operandType), result, left, immediate.value); // srai → srli
       return result;
     }
     const right = this.genExpr(node.right);
     const result = this.resultRegister(left, right);
-    this.emit(REGISTER_FORM.get(node.op), result, left, right);
+    this.emit(withSign(REGISTER_FORM.get(node.op), node.operandType), result, left, right); // sra → srl
     return result;
   }
 
@@ -313,8 +317,10 @@ class RiscvGenerator {
   }
 
   // Comparison used as a value: the result is 1 (true) or 0 (false).
+  // slt/slti become sltu/sltiu when the operands are compared as unsigned int.
   genComparison(node) {
     const { op } = node;
+    const lessThan = (signedOp) => withSign(signedOp, node.operandType);
     const k = node.right.kind === "Number" ? node.right.value : null;
     const left = this.genExpr(node.left);
 
@@ -323,11 +329,11 @@ class RiscvGenerator {
       let result;
       if (k !== null) {
         result = this.resultRegister(left);
-        this.emit("slti", result, left, k);
+        this.emit(lessThan("slti"), result, left, k);
       } else {
         const right = this.genExpr(node.right);
         result = this.resultRegister(left, right);
-        this.emit("slt", result, left, right);
+        this.emit(lessThan("slt"), result, left, right);
       }
       if (op === ">=") this.emit("xori", result, result, 1);
       return result;
@@ -337,7 +343,7 @@ class RiscvGenerator {
     if (op === ">" || op === "<=") {
       const right = this.genExpr(node.right);
       const result = this.resultRegister(left, right);
-      this.emit("slt", result, right, left);
+      this.emit(lessThan("slt"), result, right, left);
       if (op === "<=") this.emit("xori", result, result, 1);
       return result;
     }
@@ -430,17 +436,28 @@ class RiscvGenerator {
       return;
     }
     this.lines.push("# Memory map");
-    for (const symbol of this.symbolList) {
+    const rows = this.symbolList.map((symbol) => {
       const isArray = symbol.length !== null;
       const name = isArray ? `${symbol.name}[${symbol.length}]` : symbol.name;
       const lastByte = symbol.address + symbol.size * (symbol.length ?? 1) - 1;
       const range = isArray ? `${hex(symbol.address)}..${hex(lastByte)}` : hex(symbol.address);
-      this.lines.push(`#   ${name.padEnd(6)} ${symbol.type.padEnd(8)} ${range}`);
+      return { name, type: symbol.type, range };
+    });
+    // Columns as wide as their longest entry ("unsigned short"), never narrower than before.
+    const nameWidth = Math.max(6, ...rows.map((row) => row.name.length));
+    const typeWidth = Math.max(8, ...rows.map((row) => row.type.length));
+    for (const { name, type, range } of rows) {
+      this.lines.push(`#   ${name.padEnd(nameWidth)} ${type.padEnd(typeWidth)} ${range}`);
     }
   }
 }
 
 // ---------- helpers ----------
+
+// "bge" → "bgeu" when the operation works in unsigned int; any other instruction stays the same.
+function withSign(op, operandType) {
+  return isUnsigned(operandType) ? (UNSIGNED_TWIN.get(op) ?? op) : op;
+}
 
 // "8(x0)": memory operand of a load or store.
 function memory(offset, base) {

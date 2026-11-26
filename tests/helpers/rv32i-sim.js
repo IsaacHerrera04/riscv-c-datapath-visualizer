@@ -97,7 +97,9 @@ function branchTaken(name, a, b) {
   }
 }
 
-function load(name, memory, address) {
+// Value of a load instruction ("lw", "lh", "lhu", "lb", "lbu") at a byte address, as a signed
+// 32-bit number. Exported so tests can read char/short variables the way the program would.
+export function load(name, memory, address) {
   switch (name) {
     case "lw": return readWord(memory, address);
     case "lh": return (readHalf(memory, address) << 16) >> 16; // sign-extend 16 → 32 bits

@@ -198,8 +198,13 @@ decode(0x00502023)  // { name: "sw", type: "S", opcode: 0b0100011, funct3: 0b010
 - **Every program ends with `beq x0, x0, 0`** (jump to itself = halt), same convention as the
   original hardware test program.
 - Errors if the program needs more than 1024 bytes of data or more than 256 instructions.
-- The compiler stores the **type of every variable from day one**, even in phase 1 (only `int`),
-  so phase 2 (other types) adds cases instead of rewriting.
+- **Types in the backend:** loads follow the declared type (`int`/`unsigned int` → `lw`, `short` →
+  `lh`, `unsigned short` → `lhu`, `char` → `lb`, `unsigned char` → `lbu`); stores follow the size only
+  (`sw`/`sh`/`sb`, the low bits are kept). A variable index is scaled with `slli` by 2 (`int`), 1
+  (`short`) or not at all (`char`). When a `Binary` node's `operandType` is `unsigned int`, every
+  signed instruction is replaced by its unsigned twin: `slt→sltu`, `slti→sltiu`, `blt→bltu`,
+  `bge→bgeu`, `sra→srl`, `srai→srli`. The others (`add`, `sub`, `xor`, `beq`, ...) give the same bits
+  in two's complement, so they are shared.
 
 ## 6. Instruction set (33 instructions)
 
